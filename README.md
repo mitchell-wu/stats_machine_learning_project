@@ -41,7 +41,7 @@ The project follows these key steps:
 
 <a name="key-findings"></a>
 ## Key Findings
-The Random Forest model emerged as the most effective, highlighting the significance of cabin class and carrier on flight prices.
+The Random Forest model emerged as the most effective, and the important map highlighting the significance of the different variables on flight prices.
 
 <a name="future-work"></a>
 ## Future Work
