@@ -1,7 +1,10 @@
 # README: Statistical Machine Learning Project - Predicting Flight Prices between Beijing and Shanghai
 
 ## Author: Mitchell Wu
-
+---
+> **#### to preview the project HTML file please click: [HTML Preview Link](https://htmlpreview.github.io/?https://github.com/mitchell-lin/pstat131_final_project/blob/main/project.html)
+>
+> **#### Rmarkdown file: [Rmd File Link](https://github.com/mitchell-lin/stats_machine_learning_project/blob/main/131final.Rmd)
 ---
 
 ## Table of Contents
@@ -13,10 +16,7 @@
 6. [Future Work](#future-work)
 
 
----
-> #### to preview the project HTML file please click: [HTML Preview Link](https://htmlpreview.github.io/?https://github.com/mitchell-lin/pstat131_final_project/blob/main/project.html)
->
-> #### Rmarkdown file: [Rmd File Link](https://github.com/mitchell-lin/stats_machine_learning_project/blob/main/131final.Rmd)
+
 ---
 <a name="introduction"></a>
 ## Introduction
