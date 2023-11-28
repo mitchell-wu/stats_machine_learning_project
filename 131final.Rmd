@@ -1,0 +1,933 @@
+---
+title: "PSTAT131 Final Project"
+subtitle: "Predicting Flight Prices between Beijing and Shanghai"
+author: "Mitchell Wu"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    code_folding: show
+    css: font.css
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
+                      warning = FALSE)
+Sys.setlocale(category = "LC_ALL", locale = "en_US.UTF-8")
+```
+
+![Beijing Capital International Airport Terminal 3E Photographed by Mitchell Wu, May 2021](illustrations/front_pic.jpg)
+
+
+## Introduction
+
+Welcome to my final project, where I will be presenting my work on predicting flight prices between Beijing and Shanghai, the two major cities in my hometown, China.
+
+The aviation industry is one of the most dynamic and complex industries, and the prices of airline tickets are influenced by various factors. Predicting the price of a flight is a challenging task, but it can provide valuable insights for consumers as it plays a vital role in planning a trip and making decisions about purchasing tickets.
+
+In this project, I will be exploring various techniques of machine learning to predict flight prices accurately. I will use a large dataset of flight prices along with several features such as departure time, carrier,  and difference of date between purchase and departure to train and test the models.
+
+The ultimate goal of this project is to develop a model that can accurately predict flight prices, providing insights into price trends and helping customers make informed decisions about purchasing tickets.
+
+### Motivation
+
+This topic caught my attention due to my passion for traveling and my habit to make last-minute plans. While planning my winter break trip to Cairo with my girlfriend, I noticed a significant increase in flight prices from day to day, which prompted me to explore the patterns of air ticket pricing which will potentially help me save a lot of money on booking air tickets.
+
+### Explanation on the Choice of the dataset
+I used a dataset with fixed landings and takeoffs in Beijing and Shanghai to find the effect of other variables on prices, in order to exclude the variation caused by airports. If this were not done, too much airport data could introduce too much confusion into the model or result in too many observations. In addition, Beijing and Shanghai, as the largest metropolitan areas in China, have the busiest and most stable air routes in the country, making the data set sufficient and reliable.
+
+Due to the serious impact of covid19 on the aviation industry and some governmental quarantine policies especially in China, the data for the last three years are likely to be affected. To be able to make the data as close to the free market as possible, I selected the dataset from January 4, 2019 to August 22, 2019.
+
+![Beijing and Shanghai, China downloaded from Unsplash](illustrations/cities.jpg)
+
+## Exploring the Data
+### Loading Packages and Data
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(gridExtra)
+library(corrplot)
+library(kknn)
+library(lubridate)
+library(vip)
+set.seed(1222)
+```
+
+
+
+```{r}
+#read the dataset into R and clean the column names
+tickets <- read_csv("data/unprocessed/tickets_raw.csv")%>%
+  clean_names()
+head(tickets)
+```
+
+The dataset that I downloaded contains the following columns: 
+
+1. `id`: Unique identifier for each flight price record.
+
+2. `flight_number`: The flight number assigned to the flight.
+
+3. `craft_type_code`: The code assigned to the type of aircraft used for the flight.
+
+4. `dep_airport`: The three-letter code assigned to the departure airport.
+
+5. `tra_airport`: The three-letter code assigned to the transit airport.
+
+6. `arr_airport`: The three-letter code assigned to the arrival airport.
+
+7. `departure_date`: The date and time of departure for the flight.
+
+8. `arrival_date`: The date and time of arrival for the flight.
+
+9. `cabin_class`: The class of cabin. (Y = Economy Class, C = Business Class , F = First Class.)
+
+10. `price_class`: The price class assigned to the flight.
+
+11. `price`: The price of the flight in the local currency RMB.
+
+12. `rate`: The discount of the price. (price/the full price)
+
+13. `create_date`: The date on which the flight price record was created.
+
+14. `date_difference`: The difference in days between the departure date and the date on which the flight price record was created.
+```{r}
+dim(tickets)
+```
+
+The dataset has 837,479 observations and 14 variables. It is worth noticing that the number of observations is considerable and need to be shrunk, otherwise fitting the models will crush the computer's storage. I will stratify the dataset to reduce the number of observations later.
+
+
+### Missing Data
+```{r}
+library(naniar)
+vis_miss(tickets,warn_large_data = FALSE)
+```
+
+From the table above, I can see that the only column that has missing data is `tra_airport`: 98% of observations do not have `tra_airport` value. It is not surprising, since this column is optional, and an observation with the empty value simply means that it is a nonstop flight. Since almost every observation in the dataset is nonstop flight, I decide to delete all observations that has `tra_airport` value, in this way I can delete this whole column and only consider the nonstop flights. After this operation, there will be no missing data and I can proceed.
+
+```{r}
+tickets <- tickets %>%
+  filter(is.na(tra_airport))%>%
+  select(-tra_airport)
+```
+
+
+## Data Cleaning and variable selections
+Clearly, there is a lot of work that needs to be done before to make this data available for use in the model.
+
+- Since the existing IDs were out of order and confusing, I created a new `ticket_id` column and deleted the old IDs. 
+
+- Add a new column `day` with the day of the week derived from the `departure_date` column, which is a potentially useful predictor variable.
+
+- Extract the `carrier` from the `flight_number`, which is also a potentially useful predictor variable.
+
+- Delete all observations which have the `rate == 1` (no discount), since almost all customers will not consider buying the full-price ticket, even if it may have a more flexible refund and change policies or may credit more points. Removing the observations of full-price tickets could make the results of the study more practical.
+
+- Create a new column `time_period` that indicates the departure time segment in a day，which is also a potentially useful predictor variable.
+
+- Add a new column of dummy variables `is_holiday`, derived from the variable `date`. 1 indicates that the departure date is a national holiday. In doing so, we have to search on the Internet the specific dates of Chinese national holidays in 2019, it can be tricky since the holidays in China follow a different calendar called lunar calendar.
+
+- Merge some model designations with similar names in `craft_type_code`. For example, 777 and 77w both stand for the aircraft Boeing 777. The reason for this is that different airline companies have different naming styles or Boeing company makes subtle name changes to distinguish their similar models, but in general they are the same airplane model. p.s. Tricky one: Airbus 319 also belongs to the A320 family.
+
+- Select the first quarter data (before 2019-04-01), which will significantly reduce the number of observations but this is not enough. More steps will be taken to further reduce it.
+
+```{r}
+
+# Add a new column 'ticket_id' with values ranging from 1 to the number of rows in the tibble
+tickets$ticket_id <- 1:nrow(tickets)
+
+# Convert 'ticket_id' column to a string with leading zeros
+tickets$ticket_id <- sprintf("%06d", tickets$ticket_id)
+
+# Reorder the columns so that the ID will be the first
+tickets <- tickets %>%
+  select(ticket_id, everything())%>%
+  select(-id)
+
+# Split the 'flight_number' column into 'Carrier' and 'Number' columns
+# using 'sep = 2' to split at the second character
+# then convert 'Carrier' to uppercase
+tickets <- tickets %>%
+  separate(flight_number, c("carrier", "number"), sep = 2) %>%
+  mutate(carrier = toupper(carrier))
+
+# Keep only rows where 'rate' is not 1 (i.e., rate is not equal to 1)
+tickets <- tickets %>%
+  filter(rate != 1)
+
+# Split the 'departure_date' column into 'date' and 'time' columns
+# using 'sep = " "' to split at the space character
+# then create a new column 'time_period' by cutting the 'time' column
+# into time periods using 'cut()' and 'labels = ...' to define labels
+tickets <- tickets %>%
+  separate(departure_date, into = c("dep_date", "dep_time"), sep = " ") %>%
+  mutate(time_period = cut(as.POSIXct(dep_time, format = "%H:%M"), 
+                           breaks = c(as.POSIXct("00:00", format = "%H:%M"), 
+                                      as.POSIXct("04:00", format = "%H:%M"), 
+                                      as.POSIXct("08:00", format = "%H:%M"), 
+                                      as.POSIXct("12:00", format = "%H:%M"), 
+                                      as.POSIXct("16:00", format = "%H:%M"), 
+                                      as.POSIXct("20:00", format = "%H:%M"), 
+                                      as.POSIXct("24:00", format = "%H:%M")), 
+                           labels = c("late_night", "early_morning", "morning",
+                                      "afternoon", "night", "late_night")))
+
+
+# Add a new column 'weekday' with the weekday name derived from the 'departureDate' column
+tickets$day <- weekdays(as.Date(tickets$dep_date), abbreviate = FALSE)
+
+
+# Define the Chinese holidays in 2019
+holidays <- c(
+  "2019-01-01",   # New Year's Day
+  "2019-02-04",   # Chinese New Year's Eve
+  "2019-02-05",   # Chinese New Year Day 1
+  "2019-02-06",   # Chinese New Year Day 2
+  "2019-02-07",   # Chinese New Year Day 3
+  "2019-02-08",   # Chinese New Year Day 4
+  "2019-02-09",   # Chinese New Year Day 5
+  "2019-02-10",   # Chinese New Year Day 6
+  "2019-02-11",   # Chinese New Year Day 7
+  "2019-04-05",   # Tomb Sweeping Day
+  "2019-05-01",   # Labor Day
+  "2019-06-07",   # Dragon Boat Festival
+  "2019-09-13",   # Mid-Autumn Festival
+  "2019-10-01",   # National Day Day 1
+  "2019-10-02",   # National Day Day 2
+  "2019-10-03",   # National Day Day 3
+  "2019-10-04",   # National Day Day 4
+  "2019-10-05",   # National Day Day 5
+  "2019-10-06",   # National Day Day 6
+  "2019-10-07"    # National Day Day 7
+)
+
+# Create a data frame with the holiday dates
+holidays_df <- data.frame(Date = ymd(holidays))
+
+# Create a new column 'is_holiday' and set all values to 0
+tickets$is_holiday <- 0
+
+# Identify dates that are holidays and set their 'is_holiday' value to 1
+tickets$dep_date <- ymd(tickets$dep_date)
+tickets$is_holiday[tickets$dep_date %in% holidays_df$Date] <- 1
+
+
+# Simplify the 'craft_type_code' column by mapping similar codes to a single code
+# using 'case_when()'
+tickets <- tickets %>%
+  mutate(craft_type_code = case_when(
+             grepl("319", craft_type_code) ~ "320",
+             grepl("^32", craft_type_code) ~ "320",
+             grepl("^33", craft_type_code) ~ "330",
+             grepl("^35", craft_type_code) ~ "350",
+             grepl("^73", craft_type_code) ~ "737",
+             grepl("^74", craft_type_code) ~ "747",
+             grepl("^77", craft_type_code) ~ "777",
+             grepl("^78", craft_type_code) ~ "787",
+             TRUE ~ craft_type_code))
+
+# Select the data before 2019-04-01
+tickets <- tickets %>%
+  filter(ymd(dep_date) < ymd("2019-04-01"))
+```
+
+
+### Codebook
+Here is the list of variables after data cleaning:
+
+1. `ticket_id`: An integer representing the ticket ID.
+
+2. `carrier`: A string representing the airline carrier code.
+
+3. `number`: A string representing the flight number.
+
+4. `craft_type_code`: A string representing the aircraft type code.
+
+5. `dep_airport`: A string representing the departure airport code.
+
+6. `arr_airport`: A string representing the arrival airport code.
+
+7. `dep_date`: A string representing the departure date in "YYYY/MM/DD" format.
+
+8. `dep_time`: A string representing the departure time in "HH:MM" format.
+
+9. `arrival_date`: A string representing the arrival date in "YYYY/MM/DD HH:MM" format.
+
+10. `cabin_class`: A string representing the cabin class code (Y = Economy Class, C = Business Class , F = First Class).
+
+11. `price_class`: A string representing the price class code.
+
+12. `price`: A numeric representing the ticket price.
+
+13. `rate`: A numeric representing the discount of the price (price/the full price).
+
+14. `create_date`: A string representing the ticket creation date in "YYYY/MM/DD" format.
+
+15. `date_difference`: An integer representing the number of days between the ticket creation date and the departure date.
+
+16. `time_period`: A string representing the time period of the departure time.
+
+17. `day`: A string representing the day of a week of the departure date.
+
+18. `is_holiday`: A dummy variable representing whether the departure date is a Chinese national holiday (1 = yes, 0 = no).
+
+
+### Shrinking the dataset
+There is one last thing to be done before creating the recipe, which is reducing the number of observations observations. Because the different values of some variables vary significantly as a proportion of the total data set, it is best practice to try to retain all values so as not to affect the representativeness of the data set. I will adopt a stratified sampling approach. And, in my analysis, the proportion of individual categories in the total data set does not affect the performance of the model, and I choose an equal number of stratified samples per stratum.
+```{r}
+sampled_tickets <- tickets %>%
+  group_by( dep_airport, cabin_class, day, is_holiday, date_difference) %>%
+  slice_sample(n = 5, replace = FALSE) %>%
+  ungroup()
+
+#save the cleaned data 
+#write.csv(sampled_tickets, "sampled_tickets.csv", row.names = TRUE)
+```
+
+## Exploratory Data Analysis
+
+However, some of the above variables are redundant and will not be put into the final recipe, so let's do a brief analysis of the variables that need to be used. Let's start with the response variable which is `price`.
+
+Here is the distribution of `price`.
+```{r}
+summary(sampled_tickets$price)
+```
+
+```{r}
+# Distribution of flight prices
+ggplot(sampled_tickets, aes(price)) +
+  geom_histogram(fill = "darkblue", bins=50) +
+  labs(title = "Distribution of Ticket Prices", x = "Price") +
+  theme_minimal()
+```
+
+The flight price ranges from 300 to 6260, with a mean 2100 and median 1640. There is a peak on the left side of a distribution that is concentrated below 1,500 RMB. Throughout, the distribution is multimodal, guessing that it might be the impact caused by different positions. We can further visualize the ticket prices by cabin class. And it will confirm our guess! It also indicates that stratified sampling can be applied when creating the recipe.
+
+
+```{r}
+ggplot(sampled_tickets, aes(x = price, fill = cabin_class)) +
+  geom_histogram(alpha = 0.5, bins = 50) +
+  scale_fill_manual(values = c("#1E90FF", "#FFD700", "#FF6347"), 
+                    name = "Class", labels = c( "Business", "First","Economy")) +
+  labs(title = "Distribution of Ticket Prices by Class", x = "Price", y = "Count") +
+  theme_minimal()
+```
+
+Now Lets look at the `carrier` variable. From the chart, we know that CA (Air China) and MU (China Eastern) sold the most tickets.
+
+```{r}
+ggplot(sampled_tickets, aes(x = carrier)) +
+  geom_bar( fill = "darkblue") +
+  scale_y_continuous(labels = comma) +
+  labs(title = "Barplot of Ticket Count by Carrier",
+       x = "Carrier",
+       y = "Count")+theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+```
+
+The distribution of aircraft type. Note that the Airbus 330 and 320 series are the most popular types of aircraft in this route.
+```{r}
+ggplot(sampled_tickets, aes(x = craft_type_code)) +
+  geom_bar( fill = "darkblue") +
+  scale_y_continuous(labels = comma) +
+  labs(title = "Barplot of Ticket Count by Carrier",
+       x = "Carrier",
+       y = "Count")+theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+```
+
+There are half of flight tickets depart from Beijing and half of which depart from Shanghai.
+
+```{r}
+
+# Create a barplot with percentage labels using ggplot2
+
+ggplot(sampled_tickets, aes(x = dep_airport)) +
+  geom_bar( fill = "darkblue") +
+  scale_y_continuous(labels = comma) +
+  labs(title = "Barplot of Ticket Count by Carrier",
+       x = "Carrier",
+       y = "Count")+theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+# Compute the count and percentage of each dep_airport category
+airport_counts <- table(sampled_tickets$dep_airport)
+airport_percents <- airport_counts / sum(airport_counts)
+
+# Create a data frame to store the results
+airport_data <- data.frame(airport = names(airport_counts),
+                           count = as.numeric(airport_counts),
+                           percent = as.numeric(airport_percents * 100))
+airport_data
+```
+
+From the 4 plots of the variables we conclude the following.
+
+1. The creation dates of orders are almost evenly distributed over the period of our observation days.
+
+2. The interval between the order creation date and the departure date of the flight is mainly within 10 days, with some data around 15 days and some data around 30 days.
+
+3. The orders are evenly distributed on a daily basis during the week.
+
+4. The least number of flights depart early in the morning and the rest of the flights are approximately the same.
+
+```{r}
+# Create four barplots
+plot1 <- ggplot(sampled_tickets, aes(x = create_date)) + geom_bar(fill="darkblue")+theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+plot2 <- ggplot(sampled_tickets, aes(x = date_difference)) + geom_bar(fill="darkblue")+theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+plot3 <- ggplot(sampled_tickets, aes(x = day)) + geom_bar(fill="darkblue")+theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+plot4 <- ggplot(sampled_tickets, aes(x = time_period)) + geom_bar(fill="darkblue")+theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+# Arrange the plots in a 2x2 grid
+grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
+```
+
+```{r}
+summary(sampled_tickets)
+```
+
+Since most of the predictor variables are categorical, a correlation map may not provide useful information. I will continue to make some box plots between `price` and several predictor variables.
+
+```{r}
+tickets %>%
+  select(is.numeric,-ticket_id) %>%
+  cor() %>%
+  corrplot(type = "lower",diag = FALSE)
+```
+
+```{r}
+ggplot(sampled_tickets, aes(x = cabin_class, y = price, fill = cabin_class)) +
+  geom_boxplot() +
+  coord_flip() +
+  scale_fill_manual(values = c("steelblue", "salmon", "darkseagreen"),
+                    name = "Class", labels = c( "Business", "First","Economy")) +
+  labs(title = "Ticket Prices by Cabin Class",
+       x = "Cabin Class",
+       y = "Price")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+The box plot of `price` by `day`. From the graph, it can be seen that the ranges of all boxes are similar, and it is inferred that the fares are less influenced by the day of the week. H
+```{r}
+ggplot(data = sampled_tickets, aes(x = price, y = day, fill = as.factor(day))) +
+  geom_boxplot(horizontal = TRUE, outlier.colour = NA, width = 0.5) +
+  scale_fill_manual(values = c("#F9A65A", "#9E66AB", "#CD7058", "#79BAEC", "#E6D72A", "#81B622", "#D35D6E")) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none") +
+  labs(title = "Boxplot of Price by Day",
+       x = "Price",
+       y = "Day") 
+```
+
+As can be seen from the graph, fares are influenced by the carrier. On average, Air China has the most expensive fares and Juneyao Airlines has the cheapest fares.
+
+```{r}
+ggplot(sampled_tickets, aes(x = price, y = carrier, fill = carrier)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("darkred", "darkgreen", "blue", "purple", "orange", "darkblue")) +
+  labs(title = "Price Distribution by Carrier",
+       x = "Price",
+       y = "Carrier")+
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none")
+  
+```
+
+## Data Split
+
+The data splitting step is a important part of the statistical machine learning process. Data splitting involves dividing the dataset into two subsets, for training and evaluating machine learning models. Is ensures that the model is trained on one set of data and validated against another unseen set, to provide an unbiased evaluation of its performance.
+
+In the given code chunk, I implemented data splitting using the following steps:
+
+1. `set.seed(1222)`: This function is setting the random seed to ensure that the data splitting process will always be the same.
+
+2. `tickets_split <- initial_split(sampled_tickets, prop = 0.7, strata = cabin_class)`: The initial_split function is to split the sampled_tickets dataset into training and testing sets. The prop argument specified that 70% of the data will be used for training, while the remaining 30% will be used for testing. The strata argument ensures that the split is stratified based on the `cabin_class` variable, which helps maintain the proportion of each class in both the training and testing sets.
+
+3. `tickets_train <- training(tickets_split)`: This line extracted the training dataset from the `tickets_split` object. `tickets_test <- testing(tickets_split)`: This line extracted the testing dataset from the `tickets_split` object.
+
+Finally, there are codes to verify the number of rows in both the training and testing datasets, to ensure the intended 70-30 split has been executed correctly. This is achieved by multiplying the total number of rows in sampled_tickets by 0.7 and 0.3 for the training and testing datasets, accordingly, and then comparing the results with the actual number of rows in tickets_train and tickets_test.
+
+```{r}
+set.seed(1222)
+tickets_split <- initial_split(sampled_tickets, prop = 0.7, strata = cabin_class)
+tickets_train <- training(tickets_split)
+tickets_test <- testing(tickets_split)
+
+#verify
+nrow(sampled_tickets)*0.7;nrow(tickets_train)
+nrow(sampled_tickets)*0.3;nrow(tickets_test)
+```
+
+## Recipe Creation
+
+In this part I am creating a recipe for the training dataset. The recipe function from the recipes package is used to define the relationship between the target variable (price) and the predictor variables. The purpose of the recipe is to specify the steps that will be applied to the data before fitting the machine learning model. During the process of creating recipe, I carefully choose the predictor variables being used, dummy all categorical variables and scale and center the numerical predictors.
+
+The following variables will be excluded in the recipe:
+
+- `ticket_id`: This is a unique identifier for each ticket, which doesn't provide any useful information for predicting the price. 
+
+- `number`: This is the flight number, which is also has nothing to do with predicting the price. 
+
+- `arr_airport`: This variable stands for the arrival airport. It is excluded in the recipe because the departure airport (`dep_airport`) is already being considered, it is Shanghai(if the `dep_airport == "Beijing"`) and vice versa.
+
+- `dep_date` and `arrival_date`: These variables represent the departure and arrival dates, respectively. Instead of including these variables directly, the model uses the derived variables `date_difference`, `day`, and `is_holiday` to capture the relevant information from the dates. 
+
+- `price_class` and `rate`: these variables represent the discount. Including this variable in the model may lead to data leakage, as it may already contain information about the target variable, "price". To prevent biased predictions, I has to exclude any variables that are directly derived from or highly correlated with the target variable.
+
+- `create_date`: It represents the date when the ticket was created. It is not included in the recipe because it is unlikely to provide any additional information for predicting the price. The relevant date-related information is already captured by variable "date_difference".
+
+By selecting the relevant variables and excluding those that could introduce multi-collinearity or data leakage, the recipe helps to create a more accurate and interpretable machine learning model.
+
+```{r}
+tickets_recipe <- recipe(price ~ carrier + craft_type_code + dep_airport + 
+                          cabin_class + date_difference + time_period + day + is_holiday, 
+                        data = tickets_train)%>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_predictors())
+```
+
+
+## K-fold Cross Validation
+
+After creating the recipe, we have to do cross-validation on the `tickets_train` dataset. Cross-validation is an essential technique for assessing the performance and generalization ability of a machine learning model. It helps to minimize the risk of overfitting and provides a more robust estimate of the model's performance on unseen data.
+
+```{r}
+tickets_folds <- vfold_cv(tickets_train, v = 5, strata = cabin_class)
+```
+
+##Building Models
+
+This part defines a collection of machine learning models to be used for predicting ticket prices. The models encompass a diverse set of techniques, including linear regression, ridge regression, lasso regression, k-nearest neighbors (KNN), elastic net linear regression, random forest, and boosted trees. 
+
+Moreover, for some models, I specify hyperparameters that will be tuned during the model training process. Tuning these hyperparameters helps to optimize each model's performance and avoid overfitting.
+
+By defining and comparing multiple models, I aim to identify the most suitable approach for predicting ticket prices. This step is vital for achieving accurate and reliable predictions and ultimately selecting the best model for deployment in a real-world application.
+
+```{r}
+# Linear Regression
+lm_mod <- linear_reg()%>% 
+  set_engine("lm")
+
+# Ridge Regression
+# Tuning penalty and setting mixture to 0 to specify ridge
+ridge_mod <- linear_reg(mixture = 0, 
+                         penalty = tune())%>% 
+  set_mode("regression")%>% 
+  set_engine("glmnet")
+
+# Lasso Regression
+# Tuning penalty and setting mixture to 1 to specify lasso
+lasso_mod <- linear_reg(penalty = tune(), 
+                         mixture = 1)%>% 
+  set_mode("regression")%>% 
+  set_engine("glmnet")
+
+
+# K Nearest Neighbors(KNN) Model
+# Tuning the number of neighbors
+knn_mod <- nearest_neighbor(neighbors = tune())%>% 
+  set_mode("regression")%>% 
+  set_engine("kknn")
+
+# Elastic Net Linear Regression
+# Tuning penalty and mixture
+en_mod <- linear_reg(penalty = tune(), 
+                           mixture = tune())%>% 
+  set_mode("regression")%>% 
+  set_engine("glmnet")
+
+# Random Forest Model
+# Tuning mtry (number of predictors), trees, and min_n (number of minimum values in each node)
+rf_mod <- rand_forest(mtry = tune(), 
+                       trees = tune(), 
+                       min_n = tune())%>% 
+  set_engine("ranger", importance = "impurity")%>% 
+  set_mode("regression")
+
+# Boosted Trees Model
+# Tuning mtry, trees, learn_rate (the learning rate)
+bt_mod <- boost_tree(mtry = tune(), 
+                     trees = tune(), 
+                     learn_rate = tune()) %>%
+  set_engine("xgboost") %>% 
+  set_mode("regression")
+```
+
+## Fitting Models
+
+In this part of the code, I are creating workflows for each of the machine learning models and fitting them to the training data using cross-validation.
+
+For each model, I create a separate workflow add the `tickets_recipe` with the `add_recipe()` function, and then add the corresponding model with the `add_model()` function.
+
+Next, I create grids of hyperparameter values for each model. For models with no hyperparameters to tune, i.e. linear regression, no grid is created.
+
+Finally, I perform hyperparameter tuning and model fitting. It fits the model using all possible combinations of hyperparameter values in the grid and evaluates the model's performance on the validation set for each fold. The model's performance is averaged across all folds to obtain a single performance metric for each combination of hyperparameter values.
+
+By fitting and tuning the models using cross-validation, I can obtain more reliable and unbiased estimates of their performance. This process helps us to identify the best-performing model and its optimal hyperparameter values, which can then be used to make accurate predictions on unseen data.
+
+```{r}
+# Linear Regression 
+lm_workflow <- workflow()%>% 
+  add_recipe(tickets_recipe)%>%
+  add_model(lm_mod)  
+
+# Ridge Regression
+ridge_workflow <- workflow()%>% 
+  add_recipe(tickets_recipe)%>% 
+  add_model(ridge_mod)
+
+# Lasso Regression
+lasso_workflow <- workflow()%>% 
+  add_recipe(tickets_recipe)%>% 
+  add_model(lasso_mod)
+
+
+# K Nearest Neighbors(KNN) Model
+knn_workflow <- workflow()%>% 
+  add_recipe(tickets_recipe)%>%
+  add_model(knn_mod)
+
+# Elastic Net Linear Regression
+en_workflow <- workflow()%>% 
+  add_recipe(tickets_recipe)%>% 
+  add_model(en_mod)
+
+# Random Forest Model
+rf_workflow <- workflow()%>% 
+  add_recipe(tickets_recipe)%>% 
+  add_model(rf_mod)
+
+# Boosted Trees Model
+bt_workflow <- workflow()%>% 
+  add_recipe(tickets_recipe)%>% 
+  add_model(bt_mod)
+```
+
+```{r}
+# Linear Regression 
+# No grid because no tuning parameters
+
+# Ridge Regression
+penalty_grid <- grid_regular(penalty(range = c(0,1)), 
+                             levels = 20)
+
+# Lasso Regression
+# Same grid as ridge
+
+# K Nearest Neighbors(KNN) Model
+knn_grid <- grid_regular(neighbors(range = c(1,10)), 
+                         levels = 10)
+
+# Elastic Net Linear Regression
+en_grid <- grid_regular(penalty(range = c(0,1)), 
+                             mixture(range = c(0,1)), 
+                             levels = 10)
+
+# Random Forest Model
+rf_grid <- grid_regular(mtry(range = c(1, 8)), 
+                                  trees(range = c(200,600)), 
+                                  min_n(range = c(10,20)), 
+                                  levels = 5)
+
+# Boosted Trees Model
+bt_grid <- grid_regular(mtry(range = c(1, 6)), 
+                        trees(range = c(200, 600)),
+                        learn_rate(range = c(-10, -1)),
+                        levels = 5)
+```
+
+```{r,eval=FALSE}
+# Linear Regression 
+# No tuning
+lm_results <- tune_grid(
+  lm_workflow,
+  resamples = tickets_folds,
+)
+
+# Ridge Regression
+ridge_tune <- tune_grid(
+  ridge_workflow,
+  resamples = tickets_folds,
+  grid = penalty_grid
+)
+
+# Lasso Regression
+lasso_tune <- tune_grid(
+  lasso_workflow,
+  resamples = tickets_folds,
+  grid = penalty_grid
+)
+
+
+# K Nearest Neighbors(KNN) Model
+knn_tune <- tune_grid(
+    knn_workflow,
+    resamples = tickets_folds,
+    grid = knn_grid
+)
+
+# Elastic Net Linear Regression
+en_tune <- tune_grid(
+  en_workflow,
+  resamples = tickets_folds,
+  grid = en_grid
+)
+
+# Random Forest Model
+rf_tune <- tune_grid(
+  rf_workflow,
+  resamples = tickets_folds,
+  grid = rf_grid
+)
+
+# Boosted Trees Model
+bt_tune <- tune_grid(
+  bt_workflow,
+  resamples = tickets_folds,
+  grid = bt_grid
+)
+```
+For the above code chunk, the eval=FALSE option has been used to prevent the time-consuming model fitting and hyperparameter tuning processes from running whenever the R Markdown document is knit. 
+
+In this part of the code, I am saving the tuned models and later reading them back into the R environment. This approach is useful for preserving the results of the computationally expensive model fitting and hyperparameter tuning processes.
+
+```{r,eval=FALSE}
+# write_rds() to save
+
+# Linear Regression 
+# No tuning
+
+# Ridge Regression
+write_rds(ridge_tune, file = "data/tuned_models/ridge.rds")
+
+# Lasso Regression
+write_rds(lasso_tune, file = "data/tuned_models/lasso.rds")
+
+# K Nearest Neighbors(KNN) Model
+write_rds(knn_tune, file = "data/tuned_models/knn.rds")
+
+# Elastic Net Linear Regression
+write_rds(en_tune, file = "data/tuned_models/en.rds")
+
+# Random Forest Model
+write_rds(rf_tune, file = "data/tuned_models/rf.rds")
+
+# Boosted Trees Model
+write_rds(bt_tune, file = "data/tuned_models/bt.rds")
+```
+
+
+## Models Selecting
+
+In this section, The main goal is to comparing the performance of the 7 models based on their root mean squared error (RMSE) values. The RMSE is a commonly used metric for evaluating the performance of regression models, as it provides an estimate of the average error in the predicted values.
+
+Before all the tasks, I have to read the tuned models back into the R environment using the `read_rds()` function, as shown in the previous code chunk.
+
+```{r}
+ridge_tune <- read_rds("data/tuned_models/ridge.rds")
+lasso_tune <- read_rds("data/tuned_models/lasso.rds")
+knn_tune <- read_rds("data/tuned_models/knn.rds")
+en_tune <- read_rds("data/tuned_models/en.rds")
+rf_tune <- read_rds("data/tuned_models/rf.rds")
+bt_tune <- read_rds("data/tuned_models/bt.rds")
+```
+
+Then, for each model, I collect all the RMSE metrics using the `collect_metrics()` function from the tune package. I filter the results to keep only the RMSE values and also, use the `slice_min()` function to select the best (minimum) RMSE value for each model. I extract this minimum RMSE value using the `pull()` function. After retrieving the best RMSE values for all models, I create a data frame  `model_rmse` that includes both the model names and their corresponding best RMSE values, in ascending order. 
+
+Comparing the models enables me to get the model that has the lowest RMSE, which indicates the best performance in terms of prediction accuracy. Selecting the best-performing model, I can ensure that my final predictions on unseen data are as accurate and reliable as possible. I am more than excited to see the output!
+
+```{r}
+#repeat the code since we set eval = False in  above chunks
+lm_results <- tune_grid(
+  lm_workflow,
+  resamples = tickets_folds,
+)
+
+lm_rmse <- collect_metrics(lm_results)%>%
+  filter(.metric == "rmse") %>%
+  pull(mean)
+  
+
+ridge_rmse <- collect_metrics(ridge_tune) %>%
+  filter(.metric == "rmse") %>%
+  slice_min(mean)%>%
+  top_n(1)%>%
+  pull(mean)
+  
+lasso_rmse <- collect_metrics(lasso_tune) %>%
+  filter(.metric == "rmse") %>%
+  slice_min(mean)%>%
+  pull(mean)
+knn_rmse <- collect_metrics(knn_tune) %>%
+  filter(.metric == "rmse") %>%
+  slice_min(mean)%>%
+  pull(mean)
+
+en_rmse <- collect_metrics(en_tune) %>%
+  filter(.metric == "rmse") %>%
+  slice_min(mean)%>%
+  pull(mean)
+
+rf_rmse <- collect_metrics(rf_tune) %>%
+  filter(.metric == "rmse") %>%
+  slice_min(mean)%>%
+  pull(mean)
+    
+bt_rmse <- collect_metrics(bt_tune) %>%
+  filter(.metric == "rmse") %>%
+  slice_min(mean)%>%
+  pull(mean)
+```
+
+
+```{r}
+model_rmse <- data.frame(Model = c("linear", "Ridge", "Lasso", "KNN", "Elastic Net", "Random Forest", "Boosted Trees"),RMSE = c(lm_rmse, ridge_rmse, lasso_rmse, knn_rmse, en_rmse, rf_rmse, bt_rmse))
+model_rmse %>%
+  arrange(RMSE)
+```
+Based on the RMSE values provided, the Random Forest model has the lowest RMSE value, which indicates it is the best-performing model among the seven considered in terms of prediction accuracy. The Boosted Trees model is a close second, followed by Lasso, Elastic Net, etc.
+
+Based on these results, I would choose the Random Forest model for making predictions on unseen data, as it is expected to provide the most accurate and reliable results.
+```{r}
+autoplot(en_tune, metric = 'rmse')
+autoplot(rf_tune, metric = 'rmse')
+```
+The autoplot() function creates visualizations of the model's performance across different hyperparameter combinations. The x-axis represents the different hyperparameter combinations, and the y-axis shows the RMSE values corresponding to those combinations. I create two plots: one for the Elastic Net model and another for the Random Forest model. The lines in these plots indicate how the RMSE values change as the hyperparameters change.
+
+In the plot of Random Forest Model, which is the best model chosen, the RMSE value drops significantly as mtry and number of trees increase.
+
+## The Best Model
+
+In this part of the project, I am selecting the best performing model and  understanding the key factors that influence its predictions. I have chosen the Random Forest model based on its superior performance, as indicated by the lowest RMSE value.
+
+I identify the optimal hyperparameters from the tuning process and finalize the model using these best hyperparameters. By fitting the finalized model to the training data, I obtain a refined version of the Random Forest model that is expected to perform well on unseen data.
+
+Lastly, I create a variable importance plot (VIP) to gain insights into the relative importance of each predictor variable in the model. This visualization helps me understand which features have the most significant impact on the predictions. The VIP provides a valuable perspective on the factors that drive the model's performance and can inform my project's conclusions and recommendations.
+
+```{r}
+best_rf <- select_best(rf_tune, metric = "rmse")
+best_rf
+final_rf_model <- finalize_workflow(rf_workflow, best_rf)
+final_rf_model_fit <- fit(final_rf_model, tickets_train)
+
+final_rf_model_fit %>% extract_fit_parsnip() %>%
+vip()
+```
+
+Based on the VIP plot, the two most important predictor variables for ticket prices in this dataset are cabin class and carrier. This result provides valuable insights into the factors that drive ticket prices and has practical implications for consumers.
+
+It is a common sense that the cabin class determines ticket fares the most, though, the carrier's importance indicates that different airlines may have varying pricing strategies and levels of service. Consumers can benefit from comparing ticket prices across multiple carriers to find the best value.
+
+The VIP plot also indecates that date_difference and is_holiday are 2 important factors in predicting ticket prices, which can provide valuable insights for travelers when planning and booking flights.
+
+Understanding the effect of date_difference on ticket prices can help travelers make informed decisions about when to book their flights. Booking well in advance or taking advantage of last-minute deals can result in significant savings, depending on the flexibility of their schedules. By monitoring ticket prices and adjusting their booking times accordingly, travelers can secure the best deals and optimize their travel budgets.
+
+Additionally, being aware of the influence of holidays on ticket prices can help travelers plan their trips more effectively. Ticket prices tend to be higher during peak holiday seasons, as demand for flights increases. Travelers who wish to save money might consider avoiding travel during these peak periods or booking their flights well in advance to secure lower prices. On the other hand, if travelers are looking for a more unique experience or are less concerned about cost, they might choose to travel during holidays, knowing that there may be a premium on ticket prices.
+
+In summary, the findings from the Random Forest model's VIP plot provide valuable guidance for consumers in making better decisions related to travel experiences.
+
+## Model Testing
+
+```{r}
+best_rf <- select_best(rf_tune, metric = "rmse")
+best_rf
+final_rf_model <- finalize_workflow(rf_workflow, best_rf)
+final_rf_model_fit <- fit(final_rf_model, tickets_train)
+
+augment(final_rf_model_fit, new_data = tickets_test) %>%
+  rmse(truth = price, estimate = .pred)
+
+augment(final_rf_model_fit, new_data = tickets_test) %>%
+  rsq(truth = price, estimate = .pred)
+```
+In this part, I select the best modesl which is the best Random Forest model based on the lowest RMSE value obtained during the tuning process. Then, I finalize the workflow with the best parameters and fit the final model on the training dataset.
+
+Then I evaluate the performance of the best model on the test dataset. In doing so, I use the augment() function to make predictions on the unseen test data and then calculate the RMSE to measure the model's accuracy. The test RMSE obtained is 377.0946, which is relatively low and consistent with the training RMSE. Besides, R-squared value of 0.9095924 means that approximately 90.96% of the variation in the dependent variable (ticket prices) can be explained by the independent variables including in the model. In other word, the model accounts for about 90.96% of the variation in ticket prices, and the remaining 9.04% of the variability is due to factors not included in the model. This R-squared value tells that the model has a strong explanatory power and fits the data well.
+
+## Variable Importance
+
+Lastly, I create a variable importance plot to find out the relative importance of each predictor variable in the model. This visualization helps me understand which factors have the most significant impact on the predictions. The VIP provides a valuable insight on the factors that drive the model's performance and can inform my project's conclusions and recommendations.
+
+```{r}
+final_rf_model_fit %>% extract_fit_parsnip() %>%
+vip()
+```
+
+Based on the VIP plot, the two most important predictor variables for ticket prices in this dataset are cabin class and carrier. This result provides valuable insights into the factors that drive ticket prices and has practical implications for consumers.
+
+It is a common sense that the cabin class determines ticket fares the most, though, the carrier's importance indicates that different airlines may have varying pricing strategies and levels of service. Consumers can benefit from comparing ticket prices across multiple carriers to find the best value for their travel needs.
+
+![](illustrations/cabin.jpg)
+
+The VIP plot also indicates that date_difference and is_holiday are two important factors in predicting ticket prices, which can provide valuable insights for travelers when planning and booking flights.
+
+Understanding the impact of date_difference on ticket prices can help travelers make informed decisions about the timing to book their flights. Booking well in advance or taking advantage of last-minute deals can make a significant savings. By monitoring ticket prices and adjusting their booking times, travelers can secure the best deals and make a good use of their travel budgets.
+
+In addition, knowing of the influence of holidays on ticket prices can help travelers plan their trips more effectively. Ticket prices tend to be higher during peak holiday seasons, as demand for flights increases. Travelers who wish to save money might consider avoiding travel during these peak periods or booking their flights in advance to secure lower prices. On the other hand, if are less concerned about cost, they might choose to travel during holidays, knowing that there may be a premium on ticket prices.
+
+In summary, the findings from the Random Forest model's VIP plot provide valuable guidance for consumers in making better decisions related to travel experiences.
+
+## Conclusion 
+
+![](illustrations/screen.jpg)
+
+In conclusion, the primary objective of this project is to develop a predictive model for flight ticket prices based on various factors such as carrier, cabin class, date difference, and date. By employing various machine learning algorithms and evaluating their performance, I am able to identify the most effective model to predict flight prices with a high degree of accuracy.
+
+The Random Forest model emerges as the top-performing algorithm, achieving a test RMSE of 377.0946 and an R-squared value of 0.9095924, indicating that the model explains approximately 90.96% of the variance in ticket prices. It is found that cabin class and carrier are the most significant factors affecting ticket prices, followed by the date difference and holiday status. These findings have practical implications for travelers, as they can use this information to make more informed decisions when booking flights and potentially save money.
+
+Furthermore, the project demonstrates the power and flexibility of modern machine learning techniques in solving real-world problems. The insights gained from this project can be further used to enhance the user experience on flight booking platforms by providing better price predictions and more personalized recommendations.
+
+Future work on this project could include incorporating additional factors, such as ticket agencies, tickets policies (for example, whether the ticket is refundable) and gasoline price, or exploring other machine learning techniques to further improve the model's accuracy. Additionally, refining the model to provide predictions for specific routes or regions could make it even more valuable for users.
+
+Finishing the very last line of the project, I start packaging my luggage for the spring break trip. Bon Voyage!
+
+![next stop! La France!](illustrations/end.png)
+
+## Sources
+
+The link where I found the date of national holidays of China in 2019, it is a government official website.
+http://www.gov.cn/zhengce/content/2018-12/06/content_5346276.htm
+
+The link where I downloaded the original dataset. 
+https://www.kaggle.com/datasets/lpisallerl/air-tickets-between-shanghai-and-beijing?select=pek-sha.csv
+
+Some illustrations are downloaded from Unsplash App, a platform that offers high-quality, royalty-free images. It allows users to search, explore, and download photographs for personal and commercial use without any restrictions. 
+
