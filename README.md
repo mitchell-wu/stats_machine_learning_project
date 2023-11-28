@@ -36,7 +36,8 @@ The project follows these key steps:
 - Data Cleaning and Variable Selection
 - Exploratory Data Analysis
 - K-fold Cross Validation
-- Training data with multiple models
+- Training Data with Multiple Models
+- Parameters Tuning
 - Model Evaluation and Testing
 
 <a name="key-findings"></a>
