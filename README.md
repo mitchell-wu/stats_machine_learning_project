@@ -19,7 +19,7 @@
 ---
 <a name="introduction"></a>
 ## Introduction
-This project explores machine learning techniques to predict flight prices between Beijing and Shanghai, focusing on various influencing factors such as departure time, carrier, and booking lead time.
+This project explores machine learning techniques to predict flight prices between Beijing and Shanghai, focusing on various influencing factors such as departure time, and carrier.
 
 <a name="motivation"></a>
 ## Motivation
