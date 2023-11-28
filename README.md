@@ -35,8 +35,8 @@ The dataset spans from January 4, 2019, to August 22, 2019, chosen to avoid the 
 The project follows these key steps:
 - Data Cleaning and Variable Selection
 - Exploratory Data Analysis
-- Model Development using Random Forest
 - K-fold Cross Validation
+- Training data with multiple models
 - Model Evaluation and Testing
 
 <a name="key-findings"></a>
