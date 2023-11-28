@@ -35,9 +35,9 @@ The core programming language used in this project is **R**, renowned for its po
 
 <a name="major-packages"></a>
 ## Major Packages:
-- **tidyverse**: This is a collection of R packages designed for data science. It simplifies many common data operations, including data import, tidying, transformation, and visualization. In this project, packages like `ggplot2` for data visualization, `dplyr` for data manipulation, and `readr` for data import are extensively used.
+- **tidyverse**: This is a collection of R packages designed for data science. It simplifies many common data operations, including data import, tidying, transformation, and visualization. 
 
-- **tidymodels**: This package framework is crucial for modeling and statistical analysis in R. It provides a coherent and modern approach to building machine learning models. In this project, `tidymodels` is used for creating and evaluating machine learning models, ensuring our predictive analysis is both robust and accurate.
+- **tidymodels**: This package framework is crucial for modeling and statistical analysis in R. It provides a coherent and modern approach to building machine learning models. 
 
 <a name="dataset-overview"></a>
 ## Dataset Overview
