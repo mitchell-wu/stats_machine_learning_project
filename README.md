@@ -11,12 +11,7 @@
 4. [Project Methodology](#project-methodology)
 5. [Key Findings](#key-findings)
 6. [Future Work](#future-work)
-7. [How to Use](#how-to-use)
-8. [Dependencies](#dependencies)
-9. [Contributing](#contributing)
-10. [License](#license)
-11. [Contact](#contact)
-12. [Acknowledgements](#acknowledgements)
+
 
 ---
 
