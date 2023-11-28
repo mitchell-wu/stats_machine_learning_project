@@ -45,5 +45,5 @@ The Random Forest model emerged as the most effective, highlighting the signific
 
 <a name="future-work"></a>
 ## Future Work
-Future enhancements include adding more variables like ticket policies and exploring models for other routes.
+Future enhancements include adding more variables like ticket policies(e.g. refunfable/non-refundable) and exploring models that can input takeoff and landing locations to expand the predictable range.
 
