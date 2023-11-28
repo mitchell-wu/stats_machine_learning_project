@@ -34,7 +34,7 @@ Triggered by personal travel experiences and sudden price changes in flight book
 The core programming language used in this project is **R**, renowned for its powerful capabilities in statistical analysis and data visualization. R offers a flexible environment for data manipulation, making it a top choice for machine learning projects, especially those involving complex data sets.
 
 <a name="major-packages"></a>
-### Major Packages:
+## Major Packages:
 - **tidyverse**: This is a collection of R packages designed for data science. It simplifies many common data operations, including data import, tidying, transformation, and visualization. In this project, packages like `ggplot2` for data visualization, `dplyr` for data manipulation, and `readr` for data import are extensively used.
 
 - **tidymodels**: This package framework is crucial for modeling and statistical analysis in R. It provides a coherent and modern approach to building machine learning models. In this project, `tidymodels` is used for creating and evaluating machine learning models, ensuring our predictive analysis is both robust and accurate.
