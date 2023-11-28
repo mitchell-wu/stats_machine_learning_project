@@ -49,30 +49,3 @@ The Random Forest model emerged as the most effective, highlighting the signific
 ## Future Work
 Future enhancements include adding more variables like ticket policies and exploring models for specific routes.
 
-<a name="how-to-use"></a>
-## How to Use
-Instructions on how to set up, run, and use the project for flight price predictions.
-
-<a name="dependencies"></a>
-## Dependencies
-List of libraries and tools required to run the project.
-
-<a name="contributing"></a>
-## Contributing
-Guidelines for contributing to the project.
-
-<a name="license"></a>
-## License
-Details about the project's license.
-
-<a name="contact"></a>
-## Contact
-Information for contacting the author or contributors.
-
-<a name="acknowledgements"></a>
-## Acknowledgements
-Credits to individuals, organizations, or resources that helped in the project.
-
----
-
-*Note: This is a template for a README file and may not represent actual content from Mitchell Wu's project.*
