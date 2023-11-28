@@ -14,7 +14,7 @@
 
 
 ---
-
+to preview the project HTML file please click: https://htmlpreview.github.io/?https://github.com/mitchell-lin/pstat131_final_project/blob/main/project.html
 <a name="introduction"></a>
 ## Introduction
 This project explores machine learning techniques to predict flight prices between Beijing and Shanghai, focusing on various influencing factors such as departure time, carrier, and booking lead time.
