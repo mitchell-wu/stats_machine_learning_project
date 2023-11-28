@@ -15,7 +15,7 @@
 
 ---
 #### to preview the project HTML file please click: https://htmlpreview.github.io/?https://github.com/mitchell-lin/pstat131_final_project/blob/main/project.html
-#### Rmarkdown file: https://github.com/mitchell-lin/stats_machine_learning_project/blob/main/131final.Rmd
+#### Rmarkdown file: [https://github.com/mitchell-lin/stats_machine_learning_project/blob/main/131final.Rmd](https://github.com/mitchell-lin/stats_machine_learning_project/blob/main/project.Rmd)
 ---
 <a name="introduction"></a>
 ## Introduction
