@@ -2,9 +2,9 @@
 
 ## Author: Mitchell Wu
 ---
-> <p style="color:navy;"><b>#### to preview the project HTML file please click: [HTML Preview Link](https://htmlpreview.github.io/?https://github.com/mitchell-lin/pstat131_final_project/blob/main/project.html)
+> #### to preview the project HTML file please click: [HTML Preview Link](https://htmlpreview.github.io/?https://github.com/mitchell-lin/pstat131_final_project/blob/main/project.html)
 >
-> <p style="color:navy;"><b>#### Rmarkdown file: [Rmd File Link](https://github.com/mitchell-lin/stats_machine_learning_project/blob/main/131final.Rmd)
+> #### Rmarkdown file: [Rmd File Link](https://github.com/mitchell-lin/stats_machine_learning_project/blob/main/131final.Rmd)
 ---
 
 ## Table of Contents
