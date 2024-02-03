@@ -2,7 +2,7 @@
 
 ## Author: Mitchell Wu
 ---
-> #### to preview the project HTML file please click: [HTML Preview Link](https://htmlpreview.github.io/?https://github.com/mitchell-wu/pstat131_final_project/blob/main/project.html)
+> #### to preview the project HTML file please click: [HTML Preview Link](https://htmlpreview.github.io/?https://github.com/mitchell-wu/stats_machine_learning_project/blob/main/project.html)
 >
 > #### Rmarkdown file: [Rmd File Link](https://github.com/mitchell-wu/stats_machine_learning_project/blob/main/project.Rmd)
 ---
